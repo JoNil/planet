@@ -143,10 +143,6 @@ fn get_shader_change_time(name: &str) -> Result<SystemTime, Box<error::Error>> {
 }
 
 struct State {
-    display: Display,
-
-    imgui: ImGui,
-    imgui_renderer: imgui_glium_renderer::Renderer,
 
     vertex_buffer: glium::VertexBuffer<Vertex>,
     index_buffer: glium::IndexBuffer<u32>,
@@ -164,38 +160,7 @@ struct State {
 }
 
 impl State {
-    fn new(event_loop: &glutin::EventsLoop) -> Result<State, Box<error::Error>> {
-
-        let window = glutin::WindowBuilder::new().with_title("Planet");
-        let context = glutin::ContextBuilder::new()
-            .with_gl_profile(GlProfile::Core)
-            .with_gl(GlRequest::Specific(Api::OpenGl, (4, 3)));
-        let display = Display::new(window, context, &event_loop)?;
-
-        let mut imgui = ImGui::init();
-        imgui.set_ini_filename(None);
-        imgui.style_mut().window_rounding = 0.0;
-        imgui.set_imgui_key(ImGuiKey::Tab, 0);
-        imgui.set_imgui_key(ImGuiKey::LeftArrow, 1);
-        imgui.set_imgui_key(ImGuiKey::RightArrow, 2);
-        imgui.set_imgui_key(ImGuiKey::UpArrow, 3);
-        imgui.set_imgui_key(ImGuiKey::DownArrow, 4);
-        imgui.set_imgui_key(ImGuiKey::PageUp, 5);
-        imgui.set_imgui_key(ImGuiKey::PageDown, 6);
-        imgui.set_imgui_key(ImGuiKey::Home, 7);
-        imgui.set_imgui_key(ImGuiKey::End, 8);
-        imgui.set_imgui_key(ImGuiKey::Delete, 9);
-        imgui.set_imgui_key(ImGuiKey::Backspace, 10);
-        imgui.set_imgui_key(ImGuiKey::Enter, 11);
-        imgui.set_imgui_key(ImGuiKey::Escape, 12);
-        imgui.set_imgui_key(ImGuiKey::A, 13);
-        imgui.set_imgui_key(ImGuiKey::C, 14);
-        imgui.set_imgui_key(ImGuiKey::V, 15);
-        imgui.set_imgui_key(ImGuiKey::X, 16);
-        imgui.set_imgui_key(ImGuiKey::Y, 17);
-        imgui.set_imgui_key(ImGuiKey::Z, 18);
-
-        let imgui_renderer = imgui_glium_renderer::Renderer::init(&mut imgui, &display).unwrap();
+    fn new<F: Facade>(facade: &F) -> Result<State, Box<error::Error>> {
 
         let (vertex_buffer, index_buffer) = {
             const VSEGS: usize = 1024;
@@ -217,22 +182,18 @@ impl State {
             }
 
             let index_buffer =
-                glium::IndexBuffer::new(&display, PrimitiveType::TrianglesList, &flat_index_list)?;
+                glium::IndexBuffer::new(facade, PrimitiveType::TrianglesList, &flat_index_list)?;
 
-            let vertex_buffer = glium::VertexBuffer::new(&display, &vertex_list)?;
+            let vertex_buffer = glium::VertexBuffer::new(facade, &vertex_list)?;
 
             (vertex_buffer, index_buffer)
         };
 
-        let program = load_shader(&display, "planet")?;
+        let program = load_shader(facade, "planet")?;
         let program_time = get_shader_change_time("planet")?;
 
         Ok(State {
-            display: display,
-
-            imgui: imgui,
-            imgui_renderer: imgui_renderer,
-
+            
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
 
@@ -250,17 +211,14 @@ impl State {
 }
 }
 
-fn update_ui<'a>(ui: &Ui<'a>) {
-    ui.window(im_str!("Hello world"))
+fn update_ui<'a>(ui: &Ui<'a>, p: &mut State) {
+    ui.window(im_str!("Planet"))
         .size((300.0, 100.0), ImGuiCond::FirstUseEver)
         .build(|| {
-            ui.text(im_str!("Hello world!"));
-            ui.separator();
-            let mouse_pos = ui.imgui().mouse_pos();
             ui.text(im_str!(
-                "Mouse Position: ({:.1},{:.1})",
-                mouse_pos.0,
-                mouse_pos.1
+                "{:.1} fps ({:.1} ms)",
+                1.0 / p.average_fram_time,
+                p.average_fram_time * 1000.0,
             ));
         });
 }
@@ -268,7 +226,39 @@ fn update_ui<'a>(ui: &Ui<'a>) {
 fn main() -> Result<(), Box<error::Error>> {
 
     let mut event_loop = glutin::EventsLoop::new();
-    let mut p = State::new(&event_loop)?;
+
+    let window = glutin::WindowBuilder::new().with_title("Planet");
+    let context = glutin::ContextBuilder::new()
+        .with_gl_profile(GlProfile::Core)
+        .with_gl(GlRequest::Specific(Api::OpenGl, (4, 3)));
+    let display = Display::new(window, context, &event_loop)?;
+
+    let mut imgui = ImGui::init();
+    imgui.set_ini_filename(None);
+    imgui.style_mut().window_rounding = 0.0;
+    imgui.set_imgui_key(ImGuiKey::Tab, 0);
+    imgui.set_imgui_key(ImGuiKey::LeftArrow, 1);
+    imgui.set_imgui_key(ImGuiKey::RightArrow, 2);
+    imgui.set_imgui_key(ImGuiKey::UpArrow, 3);
+    imgui.set_imgui_key(ImGuiKey::DownArrow, 4);
+    imgui.set_imgui_key(ImGuiKey::PageUp, 5);
+    imgui.set_imgui_key(ImGuiKey::PageDown, 6);
+    imgui.set_imgui_key(ImGuiKey::Home, 7);
+    imgui.set_imgui_key(ImGuiKey::End, 8);
+    imgui.set_imgui_key(ImGuiKey::Delete, 9);
+    imgui.set_imgui_key(ImGuiKey::Backspace, 10);
+    imgui.set_imgui_key(ImGuiKey::Enter, 11);
+    imgui.set_imgui_key(ImGuiKey::Escape, 12);
+    imgui.set_imgui_key(ImGuiKey::A, 13);
+    imgui.set_imgui_key(ImGuiKey::C, 14);
+    imgui.set_imgui_key(ImGuiKey::V, 15);
+    imgui.set_imgui_key(ImGuiKey::X, 16);
+    imgui.set_imgui_key(ImGuiKey::Y, 17);
+    imgui.set_imgui_key(ImGuiKey::Z, 18);
+
+    let mut imgui_renderer = imgui_glium_renderer::Renderer::init(&mut imgui, &display).unwrap();
+
+    let mut p = State::new(&display)?;
 
     while p.run {
         let dt = {
@@ -283,7 +273,7 @@ fn main() -> Result<(), Box<error::Error>> {
         {
             let new_time = get_shader_change_time("planet")?;
             if new_time > p.program_time {
-                match load_shader(&p.display, "planet") {
+                match load_shader(&display, "planet") {
                     Ok(program) => p.program = program,
                     Err(e) => {
                         print!("{}", e);
@@ -308,37 +298,37 @@ fn main() -> Result<(), Box<error::Error>> {
 
                         let pressed = input.state == ElementState::Pressed;
                         match input.virtual_keycode {
-                            Some(Key::Tab) => p.imgui.set_key(0, pressed),
+                            Some(Key::Tab) => imgui.set_key(0, pressed),
                             Some(Key::Left) => {
-                                p.imgui.set_key(1, pressed);
+                                imgui.set_key(1, pressed);
                                 p.left_pressed = pressed;
                             }
                             Some(Key::Right) => {
-                                p.imgui.set_key(2, pressed);
+                                imgui.set_key(2, pressed);
                                 p.right_pressed = pressed;
                             }
-                            Some(Key::Up) => p.imgui.set_key(3, pressed),
-                            Some(Key::Down) => p.imgui.set_key(4, pressed),
-                            Some(Key::PageUp) => p.imgui.set_key(5, pressed),
-                            Some(Key::PageDown) => p.imgui.set_key(6, pressed),
-                            Some(Key::Home) => p.imgui.set_key(7, pressed),
-                            Some(Key::End) => p.imgui.set_key(8, pressed),
-                            Some(Key::Delete) => p.imgui.set_key(9, pressed),
-                            Some(Key::Back) => p.imgui.set_key(10, pressed),
-                            Some(Key::Return) => p.imgui.set_key(11, pressed),
-                            Some(Key::Escape) => p.imgui.set_key(12, pressed),
-                            Some(Key::A) => p.imgui.set_key(13, pressed),
-                            Some(Key::C) => p.imgui.set_key(14, pressed),
-                            Some(Key::V) => p.imgui.set_key(15, pressed),
-                            Some(Key::X) => p.imgui.set_key(16, pressed),
-                            Some(Key::Y) => p.imgui.set_key(17, pressed),
-                            Some(Key::Z) => p.imgui.set_key(18, pressed),
+                            Some(Key::Up) => imgui.set_key(3, pressed),
+                            Some(Key::Down) => imgui.set_key(4, pressed),
+                            Some(Key::PageUp) => imgui.set_key(5, pressed),
+                            Some(Key::PageDown) => imgui.set_key(6, pressed),
+                            Some(Key::Home) => imgui.set_key(7, pressed),
+                            Some(Key::End) => imgui.set_key(8, pressed),
+                            Some(Key::Delete) => imgui.set_key(9, pressed),
+                            Some(Key::Back) => imgui.set_key(10, pressed),
+                            Some(Key::Return) => imgui.set_key(11, pressed),
+                            Some(Key::Escape) => imgui.set_key(12, pressed),
+                            Some(Key::A) => imgui.set_key(13, pressed),
+                            Some(Key::C) => imgui.set_key(14, pressed),
+                            Some(Key::V) => imgui.set_key(15, pressed),
+                            Some(Key::X) => imgui.set_key(16, pressed),
+                            Some(Key::Y) => imgui.set_key(17, pressed),
+                            Some(Key::Z) => imgui.set_key(18, pressed),
                             Some(Key::LControl) | Some(Key::RControl) => {
-                                p.imgui.set_key_ctrl(pressed)
+                                imgui.set_key_ctrl(pressed)
                             }
-                            Some(Key::LShift) | Some(Key::RShift) => p.imgui.set_key_shift(pressed),
-                            Some(Key::LAlt) | Some(Key::RAlt) => p.imgui.set_key_alt(pressed),
-                            Some(Key::LWin) | Some(Key::RWin) => p.imgui.set_key_super(pressed),
+                            Some(Key::LShift) | Some(Key::RShift) => imgui.set_key_shift(pressed),
+                            Some(Key::LAlt) | Some(Key::RAlt) => imgui.set_key_alt(pressed),
+                            Some(Key::LWin) | Some(Key::RWin) => imgui.set_key_super(pressed),
                             _ => {}
                         }
                     }
@@ -374,7 +364,7 @@ fn main() -> Result<(), Box<error::Error>> {
                     } => {
                         p.mouse_state.wheel = y as f32;
                     }
-                    WindowEvent::ReceivedCharacter(c) => p.imgui.add_input_character(c),
+                    WindowEvent::ReceivedCharacter(c) => imgui.add_input_character(c),
                     _ => (),
                 },
                 _ => (),
@@ -382,14 +372,14 @@ fn main() -> Result<(), Box<error::Error>> {
         });
 
         {
-            let scale = p.imgui.display_framebuffer_scale();
+            let scale = imgui.display_framebuffer_scale();
 
-            p.imgui.set_mouse_pos(
+            imgui.set_mouse_pos(
                 p.mouse_state.pos.0 as f32 / scale.0,
                 p.mouse_state.pos.1 as f32 / scale.1,
             );
 
-            p.imgui.set_mouse_down([
+            imgui.set_mouse_down([
                 p.mouse_state.pressed.0,
                 p.mouse_state.pressed.1,
                 p.mouse_state.pressed.2,
@@ -397,7 +387,7 @@ fn main() -> Result<(), Box<error::Error>> {
                 false,
             ]);
 
-            p.imgui.set_mouse_wheel(p.mouse_state.wheel / scale.1);
+            imgui.set_mouse_wheel(p.mouse_state.wheel / scale.1);
         }
 
         if p.right_pressed {
@@ -408,7 +398,7 @@ fn main() -> Result<(), Box<error::Error>> {
             p.rot -= dt * 45.0;
         }
 
-        let (width, height) = p.display.get_framebuffer_dimensions();
+        let (width, height) = display.get_framebuffer_dimensions();
 
         let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
             * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
@@ -432,7 +422,7 @@ fn main() -> Result<(), Box<error::Error>> {
             ..Default::default()
         };
 
-        let ui = p.imgui.frame(
+        let ui = imgui.frame(
             FrameSize::new(
                 width as f64,
                 height as f64,
@@ -441,13 +431,13 @@ fn main() -> Result<(), Box<error::Error>> {
             dt
         );
 
-        update_ui(&ui);
+        update_ui(&ui, &mut p);
 
-        let mut target = p.display.draw();
+        let mut target = display.draw();
         target.clear_color(0.0, 0.0, 0.0, 0.0);
         target.clear_depth(1.0);
         target.draw(&p.vertex_buffer, &p.index_buffer, &p.program, &uniforms, &params)?;
-        p.imgui_renderer.render(&mut target, ui).unwrap();
+        imgui_renderer.render(&mut target, ui).unwrap();
         target.finish()?;
     }
 
