@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<error::Error>> {
     let mut events_loop = glutin::EventsLoop::new();
 
     let display = {
-        let window = glutin::WindowBuilder::new().with_title("Cool yo! ;P");
+        let window = glutin::WindowBuilder::new().with_title("Planet");
         let context = glutin::ContextBuilder::new()
             .with_gl_profile(GlProfile::Core)
             .with_gl(GlRequest::Specific(Api::OpenGl, (4, 3)));
@@ -175,6 +175,7 @@ fn main() -> Result<(), Box<error::Error>> {
     let mut left_pressed = false;
     let mut rot = 0.0;
     let mut last_time = Instant::now();
+    let mut average_fram_time = 0.0;
 
     while run {
         let dt = {
@@ -183,6 +184,10 @@ fn main() -> Result<(), Box<error::Error>> {
             last_time = new_time;
             duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
         };
+
+        average_fram_time = average_fram_time * 0.95 + dt * 0.05;
+
+        display.gl_window().window().set_title(&format!("Planet: {:.1} fps ({:.1} ms)", 1.0 / average_fram_time, average_fram_time * 1000.0));
 
         {
             let new_time = get_shader_change_time("planet")?;
