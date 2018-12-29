@@ -1,7 +1,15 @@
 use cgmath::{perspective, vec3, Deg, Matrix4, Rad};
-use glium::glutin::{Api, GlProfile, GlRequest};
-use glium::index::PrimitiveType;
-use glium::{glutin, implement_vertex, program, uniform, Surface};
+use glium::glutin::{
+    Api,
+    ElementState::{Pressed, Released},
+    GlProfile, GlRequest,
+    WindowEvent::KeyboardInput,
+};
+use glium::{
+    Depth, DepthTest, glutin, implement_vertex, index::PrimitiveType, program,
+    uniform, Surface,
+    draw_parameters::BackfaceCullingMode,
+};
 use std::f32::consts::PI;
 
 #[derive(Copy, Clone, Default)]
@@ -566,6 +574,9 @@ fn main() {
     .unwrap();
 
     let mut run = true;
+    let mut right_pressed = false;
+    let mut left_pressed = false;
+    let mut rot = 0.0;
 
     while run {
         events_loop.poll_events(|event| match event {
@@ -573,15 +584,67 @@ fn main() {
                 glutin::WindowEvent::CloseRequested => {
                     run = false;
                 }
+                KeyboardInput {
+                    device_id: _,
+                    input:
+                        glutin::KeyboardInput {
+                            scancode: 77,
+                            state: Pressed,
+                            ..
+                        },
+                } => {
+                    right_pressed = true;
+                }
+                KeyboardInput {
+                    device_id: _,
+                    input:
+                        glutin::KeyboardInput {
+                            scancode: 77,
+                            state: Released,
+                            ..
+                        },
+                } => {
+                    right_pressed = false;
+                }
+                KeyboardInput {
+                    device_id: _,
+                    input:
+                        glutin::KeyboardInput {
+                            scancode: 75,
+                            state: Pressed,
+                            ..
+                        },
+                } => {
+                    left_pressed = true;
+                }
+                KeyboardInput {
+                    device_id: _,
+                    input:
+                        glutin::KeyboardInput {
+                            scancode: 75,
+                            state: Released,
+                            ..
+                        },
+                } => {
+                    left_pressed = false;
+                }
                 _ => (),
             },
             _ => (),
         });
 
+        if right_pressed {
+            rot += 0.001;
+        }
+
+        if left_pressed {
+            rot -= 0.001;
+        }
+
         let (width, height) = display.get_framebuffer_dimensions();
 
         let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
-            * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Rad(0.1 * PI)))
+            * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Rad(rot * PI)))
         .into();
 
         let p: [[f32; 4]; 4] =
@@ -593,11 +656,18 @@ fn main() {
         };
 
         let params = glium::DrawParameters {
+            depth: Depth {
+                test: DepthTest::IfLess,
+                write: true,
+                .. Default::default()
+            },
+            backface_culling: BackfaceCullingMode::CullClockwise,
             ..Default::default()
         };
 
         let mut target = display.draw();
         target.clear_color(0.0, 0.0, 0.0, 0.0);
+        target.clear_depth(1.0);
         target
             .draw(&vertex_buffer, &index_buffer, &program, &uniforms, &params)
             .unwrap();
