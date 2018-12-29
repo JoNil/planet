@@ -1,0 +1,8 @@
+[package]
+name = "proc_planet"
+version = "0.1.0"
+authors = ["Isabelle"]
+edition = "2018"
+
+[dependencies]
+glium = "0.23.0"
