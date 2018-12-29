@@ -187,7 +187,11 @@ fn main() -> Result<(), Box<error::Error>> {
 
         average_fram_time = average_fram_time * 0.95 + dt * 0.05;
 
-        display.gl_window().window().set_title(&format!("Planet: {:.1} fps ({:.1} ms)", 1.0 / average_fram_time, average_fram_time * 1000.0));
+        display.gl_window().window().set_title(&format!(
+            "Planet: {:.1} fps ({:.1} ms)",
+            1.0 / average_fram_time,
+            average_fram_time * 1000.0
+        ));
 
         {
             let new_time = get_shader_change_time("planet")?;
