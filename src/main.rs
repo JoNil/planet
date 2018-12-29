@@ -1,4 +1,4 @@
-use cgmath::{perspective, vec3, Deg, Matrix4, Rad};
+use cgmath::{perspective, vec3, Deg, Matrix4};
 use glium::glutin::{
     Api,
     ElementState::{Pressed, Released},
@@ -13,7 +13,7 @@ use std::cmp::max;
 use std::error;
 use std::f32::consts::PI;
 use std::fs;
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 #[derive(Copy, Clone, Default)]
 struct Vertex {
@@ -174,8 +174,16 @@ fn main() -> Result<(), Box<error::Error>> {
     let mut right_pressed = false;
     let mut left_pressed = false;
     let mut rot = 0.0;
+    let mut last_time = Instant::now();
 
     while run {
+        let dt = {
+            let new_time = Instant::now();
+            let duration = new_time.duration_since(last_time);
+            last_time = new_time;
+            duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
+        };
+
         {
             let new_time = get_shader_change_time("planet")?;
             if new_time > program_time {
@@ -244,17 +252,17 @@ fn main() -> Result<(), Box<error::Error>> {
         });
 
         if right_pressed {
-            rot += 0.001;
+            rot += dt * 45.0;
         }
 
         if left_pressed {
-            rot -= 0.001;
+            rot -= dt * 45.0;
         }
 
         let (width, height) = display.get_framebuffer_dimensions();
 
         let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
-            * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Rad(rot * PI)))
+            * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(rot)))
         .into();
 
         let p: [[f32; 4]; 4] =
