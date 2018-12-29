@@ -179,7 +179,12 @@ fn main() -> Result<(), Box<error::Error>> {
         {
             let new_time = get_shader_change_time("planet")?;
             if new_time > program_time {
-                program = load_shader(&display, "planet")?;
+                match load_shader(&display, "planet") {
+                    Ok(p) => program = p,
+                    Err(e) => {
+                        print!("{}", e);
+                    }
+                }
                 program_time = new_time;
             }
         }
