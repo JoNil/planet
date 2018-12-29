@@ -6,14 +6,14 @@ use glium::glutin::{
     WindowEvent::KeyboardInput,
 };
 use glium::{
-    Depth, DepthTest, glutin, implement_vertex, index::PrimitiveType,
-    uniform, Surface,
-    Program,
-    draw_parameters::BackfaceCullingMode,
+    backend::Facade, draw_parameters::BackfaceCullingMode, glutin, implement_vertex,
+    index::PrimitiveType, uniform, Depth, DepthTest, Program, Surface,
 };
+use std::cmp::max;
+use std::error;
 use std::f32::consts::PI;
 use std::fs;
-use std::error;
+use std::time::SystemTime;
 
 #[derive(Copy, Clone, Default)]
 struct Vertex {
@@ -114,10 +114,24 @@ fn create_sphere(vertices: &mut [Vertex], indices: &mut [Triangle], radius: f32,
     }
 }
 
+fn load_shader<F: Facade>(facade: &F, name: &str) -> Result<Program, Box<error::Error>> {
+    Ok(Program::from_source(
+        facade,
+        &fs::read_to_string(&format!("shaders/{}.vert", name))?,
+        &fs::read_to_string(&format!("shaders/{}.frag", name))?,
+        None,
+    )?)
+}
+
+fn get_shader_change_time(name: &str) -> Result<SystemTime, Box<error::Error>> {
+    let metadata_vert = fs::metadata(&format!("shaders/{}.vert", name))?;
+    let metadata_frag = fs::metadata(&format!("shaders/{}.frag", name))?;
+    Ok(max(metadata_vert.modified()?, metadata_frag.modified()?))
+}
+
 fn main() -> Result<(), Box<error::Error>> {
-    
     let mut events_loop = glutin::EventsLoop::new();
-    
+
     let display = {
         let window = glutin::WindowBuilder::new().with_title("Cool yo! ;P");
         let context = glutin::ContextBuilder::new()
@@ -132,8 +146,8 @@ fn main() -> Result<(), Box<error::Error>> {
         const NVERTS: usize = 1 + (VSEGS - 1) * (HSEGS + 1) + 1; // top + middle + bottom
         const NTRIS: usize = HSEGS + (VSEGS - 2) * HSEGS * 2 + HSEGS; // top + middle + bottom
 
-        let mut vertex_list: Vec<Vertex> = vec![Default::default(); NVERTS];
-        let mut index_list: Vec<Triangle> = vec![Default::default(); NTRIS];
+        let mut vertex_list = vec![Default::default(); NVERTS];
+        let mut index_list = vec![Default::default(); NTRIS];
 
         create_sphere(&mut vertex_list, &mut index_list, 0.65, VSEGS);
 
@@ -146,15 +160,15 @@ fn main() -> Result<(), Box<error::Error>> {
         }
 
         let index_buffer =
-            glium::IndexBuffer::new(&display, PrimitiveType::TrianglesList, &flat_index_list)
-                ?;
+            glium::IndexBuffer::new(&display, PrimitiveType::TrianglesList, &flat_index_list)?;
 
         let vertex_buffer = glium::VertexBuffer::new(&display, &vertex_list)?;
 
         (vertex_buffer, index_buffer)
     };
 
-    let program = Program::from_source(&display, &fs::read_to_string("shaders/planet.vert")?, &fs::read_to_string("shaders/planet.frag")?, None)?;
+    let mut program = load_shader(&display, "planet")?;
+    let mut program_time = get_shader_change_time("planet")?;
 
     let mut run = true;
     let mut right_pressed = false;
@@ -162,6 +176,14 @@ fn main() -> Result<(), Box<error::Error>> {
     let mut rot = 0.0;
 
     while run {
+        {
+            let new_time = get_shader_change_time("planet")?;
+            if new_time > program_time {
+                program = load_shader(&display, "planet")?;
+                program_time = new_time;
+            }
+        }
+
         events_loop.poll_events(|event| match event {
             glutin::Event::WindowEvent { event, .. } => match event {
                 glutin::WindowEvent::CloseRequested => {
@@ -242,7 +264,7 @@ fn main() -> Result<(), Box<error::Error>> {
             depth: Depth {
                 test: DepthTest::IfLess,
                 write: true,
-                .. Default::default()
+                ..Default::default()
             },
             backface_culling: BackfaceCullingMode::CullClockwise,
             ..Default::default()
@@ -251,9 +273,7 @@ fn main() -> Result<(), Box<error::Error>> {
         let mut target = display.draw();
         target.clear_color(0.0, 0.0, 0.0, 0.0);
         target.clear_depth(1.0);
-        target
-            .draw(&vertex_buffer, &index_buffer, &program, &uniforms, &params)
-            ?;
+        target.draw(&vertex_buffer, &index_buffer, &program, &uniforms, &params)?;
         target.finish()?;
     }
 
