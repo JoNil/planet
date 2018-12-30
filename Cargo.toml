@@ -9,6 +9,7 @@ cgmath = "0.16.1"
 glium = "0.22.0"
 imgui = "0.0.21"
 imgui-glium-renderer = "0.0.21"
+rand = "0.6.1"
 
 [profile.release]
 panic = "abort"

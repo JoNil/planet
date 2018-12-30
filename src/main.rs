@@ -1,10 +1,14 @@
 use cgmath::{perspective, vec3, Deg, Matrix4, Vector3};
 use glium::glutin::{dpi::LogicalPosition, Api, GlProfile, GlRequest};
 use glium::{
-    backend::Facade, draw_parameters::BackfaceCullingMode, glutin, implement_vertex,
-    index::PrimitiveType, uniform, Depth, DepthTest, Display, Program, Surface,
+    backend::Facade,
+    draw_parameters::{BackfaceCullingMode, Blend},
+    glutin, implement_vertex,
+    index::PrimitiveType,
+    uniform, Depth, DepthTest, Display, DrawParameters, Program, Surface,
 };
 use imgui::{im_str, FrameSize, ImGui, ImGuiCond, ImGuiKey, Ui};
+use rand::distributions::{Distribution, UnitSphereSurface};
 use std::cmp::max;
 use std::error;
 use std::f32::consts::PI;
@@ -23,6 +27,12 @@ implement_vertex!(Vertex, pos, normal, tex);
 struct Triangle {
     ind: [i32; 3],
 }
+
+#[derive(Copy, Clone, Default)]
+struct StarVertex {
+    pos: [f32; 3],
+}
+implement_vertex!(StarVertex, pos);
 
 #[derive(Debug, Copy, Clone)]
 struct MouseState {
@@ -146,6 +156,8 @@ struct State {
     vertex_buffer: glium::VertexBuffer<Vertex>,
     index_buffer: glium::IndexBuffer<u32>,
 
+    star_buffer: glium::VertexBuffer<StarVertex>,
+
     sun_pos: Vector3<f32>,
     sun_angle: f32,
 
@@ -154,6 +166,9 @@ struct State {
 
     cloud_program: Program,
     cloud_program_time: SystemTime,
+
+    star_program: Program,
+    star_program_time: SystemTime,
 
     run: bool,
     right_pressed: bool,
@@ -194,15 +209,38 @@ impl State {
             (vertex_buffer, index_buffer)
         };
 
+        let star_buffer = {
+            let mut star_list = Vec::new();
+
+            let sphere = UnitSphereSurface::new();
+            let mut rng = rand::thread_rng();
+
+            for _ in 0..100000 {
+                let v = sphere.sample(&mut rng);
+                star_list.push(StarVertex {
+                    pos: [v[0] as f32, v[1] as f32, v[2] as f32],
+                });
+            }
+
+            let vertex_buffer = glium::VertexBuffer::new(facade, &star_list)?;
+
+            vertex_buffer
+        };
+
         let program = load_shader(facade, "planet")?;
         let program_time = get_shader_change_time("planet")?;
 
         let cloud_program = load_shader(facade, "cloud")?;
         let cloud_program_time = get_shader_change_time("cloud")?;
 
+        let star_program = load_shader(facade, "stars")?;
+        let star_program_time = get_shader_change_time("stars")?;
+
         Ok(State {
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
+
+            star_buffer: star_buffer,
 
             sun_pos: vec3(0.0, 0.0, -1.0),
             sun_angle: 0.0,
@@ -212,6 +250,9 @@ impl State {
 
             cloud_program: cloud_program,
             cloud_program_time: cloud_program_time,
+
+            star_program: star_program,
+            star_program_time: star_program_time,
 
             run: true,
             right_pressed: false,
@@ -317,6 +358,19 @@ fn main() -> Result<(), Box<error::Error>> {
                     }
                 }
                 p.cloud_program_time = new_time;
+            }
+        }
+
+        {
+            let new_time = get_shader_change_time("stars")?;
+            if new_time > p.star_program_time {
+                match load_shader(&display, "stars") {
+                    Ok(program) => p.star_program = program,
+                    Err(e) => {
+                        print!("{}", e);
+                    }
+                }
+                p.star_program_time = new_time;
             }
         }
 
@@ -480,7 +534,19 @@ fn main() -> Result<(), Box<error::Error>> {
             }
         };
 
-        let params = glium::DrawParameters {
+        let star_uniforms = {
+            let mvp: [[f32; 4]; 4] =
+                (perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0)
+                    * Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
+                    * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
+                .into();
+
+            uniform! {
+                mvp: mvp,
+            }
+        };
+
+        let params = DrawParameters {
             depth: Depth {
                 test: DepthTest::IfLess,
                 write: true,
@@ -490,25 +556,43 @@ fn main() -> Result<(), Box<error::Error>> {
             ..Default::default()
         };
 
-        let cloud_params = glium::DrawParameters {
+        let cloud_params = DrawParameters {
             depth: Depth {
                 test: DepthTest::IfLess,
                 write: true,
                 ..Default::default()
             },
-            blend: glium::draw_parameters::Blend::alpha_blending(),
+            blend: Blend::alpha_blending(),
+            ..Default::default()
+        };
+
+        let star_params = DrawParameters {
+            depth: Depth {
+                test: DepthTest::IfLess,
+                write: true,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
         let mut target = display.draw();
         target.clear_color(0.0, 0.0, 0.0, 0.0);
         target.clear_depth(1.0);
+
         target.draw(
             &p.vertex_buffer,
             &p.index_buffer,
             &p.program,
             &uniforms,
             &params,
+        )?;
+
+        target.draw(
+            &p.star_buffer,
+            &glium::index::NoIndices(PrimitiveType::Points),
+            &p.star_program,
+            &star_uniforms,
+            &star_params,
         )?;
 
         target.draw(
