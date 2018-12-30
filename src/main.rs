@@ -339,8 +339,8 @@ fn main() -> Result<(), Box<error::Error>> {
         let (width, height) = display.get_framebuffer_dimensions();
         DepthRenderBuffer::new(&display, DepthFormat::F32, width, height)?
     };
-    let lightmap_framebuffer =
-        SimpleFrameBuffer::with_depth_buffer(&display, &lightmap_texture, &lightmap_depthbuffer);
+    let mut lightmap_framebuffer =
+        SimpleFrameBuffer::with_depth_buffer(&display, &lightmap_texture, &lightmap_depthbuffer)?;
 
     let mut p = State::new(&display)?;
 
@@ -606,44 +606,75 @@ fn main() -> Result<(), Box<error::Error>> {
             ..Default::default()
         };
 
-        let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 0.0, 0.0);
-        target.clear_depth(1.0);
+        {
+            lightmap_framebuffer.clear_color(0.0, 0.0, 0.0, 0.0);
+            lightmap_framebuffer.clear_depth(1.0);
 
-        target.draw(
-            &p.vertex_buffer,
-            &p.index_buffer,
-            &p.program,
-            &uniforms,
-            &params,
-        )?;
+            lightmap_framebuffer.draw(
+                &p.vertex_buffer,
+                &p.index_buffer,
+                &p.program,
+                &uniforms,
+                &params,
+            )?;
 
-        target.draw(
-            &p.star_buffer,
-            &glium::index::NoIndices(PrimitiveType::Points),
-            &p.star_program,
-            &star_uniforms,
-            &star_params,
-        )?;
+            lightmap_framebuffer.draw(
+                &p.vertex_buffer,
+                &p.index_buffer,
+                &p.cloud_program,
+                &cloud_uniforms,
+                &cloud_params_back,
+            )?;
 
-        target.draw(
-            &p.vertex_buffer,
-            &p.index_buffer,
-            &p.cloud_program,
-            &cloud_uniforms,
-            &cloud_params_back,
-        )?;
+            lightmap_framebuffer.draw(
+                &p.vertex_buffer,
+                &p.index_buffer,
+                &p.cloud_program,
+                &cloud_uniforms,
+                &cloud_params_forward,
+            )?;
+        }
 
-        target.draw(
-            &p.vertex_buffer,
-            &p.index_buffer,
-            &p.cloud_program,
-            &cloud_uniforms,
-            &cloud_params_forward,
-        )?;
+        {
+            let mut target = display.draw();
+            target.clear_color(0.0, 0.0, 0.0, 0.0);
+            target.clear_depth(1.0);
 
-        imgui_renderer.render(&mut target, ui).unwrap();
-        target.finish()?;
+            target.draw(
+                &p.vertex_buffer,
+                &p.index_buffer,
+                &p.program,
+                &uniforms,
+                &params,
+            )?;
+
+            target.draw(
+                &p.star_buffer,
+                &glium::index::NoIndices(PrimitiveType::Points),
+                &p.star_program,
+                &star_uniforms,
+                &star_params,
+            )?;
+
+            target.draw(
+                &p.vertex_buffer,
+                &p.index_buffer,
+                &p.cloud_program,
+                &cloud_uniforms,
+                &cloud_params_back,
+            )?;
+
+            target.draw(
+                &p.vertex_buffer,
+                &p.index_buffer,
+                &p.cloud_program,
+                &cloud_uniforms,
+                &cloud_params_forward,
+            )?;
+
+            imgui_renderer.render(&mut target, ui).unwrap();
+            target.finish()?;
+        }
     }
 
     Ok(())
