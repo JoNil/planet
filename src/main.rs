@@ -215,7 +215,7 @@ impl State {
             let sphere = UnitSphereSurface::new();
             let mut rng = rand::thread_rng();
 
-            for _ in 0..100000 {
+            for _ in 0..10000 {
                 let v = sphere.sample(&mut rng);
                 star_list.push(StarVertex {
                     pos: [v[0] as f32, v[1] as f32, v[2] as f32],
@@ -282,7 +282,7 @@ fn update_ui<'a>(ui: &Ui<'a>, p: &mut State) {
             {
                 let x = p.sun_angle.to_radians().cos();
                 let y = p.sun_angle.to_radians().sin();
-                p.sun_pos = vec3(y, 0.0, -x);
+                p.sun_pos = vec3(10000.0*y, 0.0, 10000.0*-x);
             }
 
             ui.text(im_str!("Sun Pos: {:?}", &p.sun_pos));
