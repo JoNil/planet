@@ -159,6 +159,7 @@ struct State {
     right_pressed: bool,
     left_pressed: bool,
     rot: f32,
+    start_time: Instant,
     last_time: Instant,
     average_frame_time: f32,
     mouse_state: MouseState,
@@ -166,7 +167,6 @@ struct State {
 
 impl State {
     fn new<F: Facade>(facade: &F) -> Result<State, Box<error::Error>> {
-
         let (vertex_buffer, index_buffer) = {
             const VSEGS: usize = 1024;
             const HSEGS: usize = VSEGS * 2;
@@ -217,6 +217,7 @@ impl State {
             right_pressed: false,
             left_pressed: false,
             rot: 0.0,
+            start_time: Instant::now(),
             last_time: Instant::now(),
             average_frame_time: 0.0,
             mouse_state: MouseState::new(),
@@ -441,10 +442,7 @@ fn main() -> Result<(), Box<error::Error>> {
         let ui = imgui.frame(FrameSize::new(width as f64, height as f64, 1.0), dt);
         update_ui(&ui, &mut p);
 
-        
-
         let uniforms = {
-
             let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
                 * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
             .into();
@@ -461,6 +459,27 @@ fn main() -> Result<(), Box<error::Error>> {
             }
         };
 
+        let cloud_uniforms = {
+            let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
+                * Matrix4::from_scale(1.2)
+                * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
+            .into();
+
+            let projection: [[f32; 4]; 4] =
+                perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0).into();
+
+            let time = {
+                let duration = Instant::now().duration_since(p.start_time);
+                duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
+            };
+
+            uniform! {
+                MV: mv,
+                P: projection,
+                time: time,
+            }
+        };
+
         let params = glium::DrawParameters {
             depth: Depth {
                 test: DepthTest::IfLess,
@@ -468,6 +487,16 @@ fn main() -> Result<(), Box<error::Error>> {
                 ..Default::default()
             },
             backface_culling: BackfaceCullingMode::CullClockwise,
+            ..Default::default()
+        };
+
+        let cloud_params = glium::DrawParameters {
+            depth: Depth {
+                test: DepthTest::IfLess,
+                write: true,
+                ..Default::default()
+            },
+            blend: glium::draw_parameters::Blend::alpha_blending(),
             ..Default::default()
         };
 
@@ -481,6 +510,15 @@ fn main() -> Result<(), Box<error::Error>> {
             &uniforms,
             &params,
         )?;
+
+        target.draw(
+            &p.vertex_buffer,
+            &p.index_buffer,
+            &p.cloud_program,
+            &cloud_uniforms,
+            &cloud_params,
+        )?;
+
         imgui_renderer.render(&mut target, ui).unwrap();
         target.finish()?;
     }

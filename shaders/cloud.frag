@@ -5,7 +5,7 @@ in vec3 Position;
 in vec3 vPos;
 in vec3 Normal;
 
-uniform float TIME;
+uniform float time;
 
 const float shininess = 1.0;
 
@@ -166,10 +166,10 @@ float cnoise(vec4 P){
 // 	<https://gist.github.com/patriciogonzalezvivo/670c22f3966e662d2f83>
 #define NUM_OCTAVES 5
 float fbm(vec4 x) {
-	float freq = 0.37f;
-	float amp = 0.2f;
-	float lacunarity = 1.8715f;
-	float gain = 0.85f;
+	float freq = 3.1f;
+	float amp = 0.5f;
+	float lacunarity = 6.9f;
+	float gain = 0.009f;
 
 	float sum = 0.0f;
 	for (int i = 0; i < NUM_OCTAVES; ++i) {
@@ -190,8 +190,8 @@ void main () {
 	///////////////////////////////////////////////////////////////////////////
 	// Color
 
-	float noise = abs(fbm(vec4(vPos, TIME * 0.1f)));
-  vec4 color = vec4(0.87f, 0.87f, 0.87f, clamp(2 * noise, 0.f, 1.f)); 
+	float noise = abs(smoothstep(0.1, 0.9, fbm(vec4(vPos, time * 0.01))));
+  vec4 color = vec4(1.f, 1.f, 1.f, clamp(2 * noise, 0.f, 1.f)); 
 
 	////////////////////////////////////////////////////////////////////////////
 	// Lighting
@@ -219,4 +219,8 @@ void main () {
 	
 	vec3 resultLight = ambient + diffuse;// + specular;
 	FragColor = color;//vec4(resultLight, texAlpha);
+
+  if (color.a == 0.0) {
+    discard;
+  }
 }
