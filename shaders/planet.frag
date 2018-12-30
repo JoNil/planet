@@ -8,6 +8,7 @@ in vec2 UV;
 in float Altitude;
 
 //uniform vec3 LP;
+uniform vec3 sunPos;
 uniform sampler2D tex;
 
 //uniform float oceanHeight;
@@ -281,7 +282,6 @@ void main () {
 
     ////////////////////////////////////////////////////////////////////////////
     // Lighting
-    vec3 sunPos = vec3(0.f, -1.0f, 0.0f);
     vec3 lightDir = normalize(sunPos - Position);
     vec3 viewDir  = normalize(-Position);
 

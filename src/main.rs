@@ -1,8 +1,8 @@
-use cgmath::{perspective, vec3, Deg, Matrix4};
+use cgmath::{perspective, vec3, Deg, Matrix4, Vector3};
 use glium::glutin::{dpi::LogicalPosition, Api, GlProfile, GlRequest};
 use glium::{
     backend::Facade, draw_parameters::BackfaceCullingMode, glutin, implement_vertex,
-    index::PrimitiveType, uniform, Depth, DepthTest, Program, Surface, Display,
+    index::PrimitiveType, uniform, Depth, DepthTest, Display, Program, Surface,
 };
 use imgui::{im_str, FrameSize, ImGui, ImGuiCond, ImGuiKey, Ui};
 use std::cmp::max;
@@ -143,9 +143,11 @@ fn get_shader_change_time(name: &str) -> Result<SystemTime, Box<error::Error>> {
 }
 
 struct State {
-
     vertex_buffer: glium::VertexBuffer<Vertex>,
     index_buffer: glium::IndexBuffer<u32>,
+
+    sun_pos: Vector3<f32>,
+    sun_angle: f32,
 
     program: Program,
     program_time: SystemTime,
@@ -161,7 +163,6 @@ struct State {
 
 impl State {
     fn new<F: Facade>(facade: &F) -> Result<State, Box<error::Error>> {
-
         let (vertex_buffer, index_buffer) = {
             const VSEGS: usize = 1024;
             const HSEGS: usize = VSEGS * 2;
@@ -193,9 +194,11 @@ impl State {
         let program_time = get_shader_change_time("planet")?;
 
         Ok(State {
-            
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
+
+            sun_pos: vec3(0.0, 0.0, -1.0),
+            sun_angle: 0.0,
 
             program: program,
             program_time: program_time,
@@ -207,8 +210,8 @@ impl State {
             last_time: Instant::now(),
             average_fram_time: 0.0,
             mouse_state: MouseState::new(),
-    })
-}
+        })
+    }
 }
 
 fn update_ui<'a>(ui: &Ui<'a>, p: &mut State) {
@@ -220,11 +223,21 @@ fn update_ui<'a>(ui: &Ui<'a>, p: &mut State) {
                 1.0 / p.average_fram_time,
                 p.average_fram_time * 1000.0,
             ));
+
+            if ui
+                .slider_float(im_str!("Sun Angle"), &mut p.sun_angle, -180.0, 180.0)
+                .build()
+            {
+                let x = p.sun_angle.to_radians().cos();
+                let y = p.sun_angle.to_radians().sin();
+                p.sun_pos = vec3(y, 0.0, -x);
+            }
+
+            ui.text(im_str!("Sun Pos: {:?}", &p.sun_pos));
         });
 }
 
 fn main() -> Result<(), Box<error::Error>> {
-
     let mut event_loop = glutin::EventsLoop::new();
 
     let window = glutin::WindowBuilder::new().with_title("Planet");
@@ -341,7 +354,9 @@ fn main() -> Result<(), Box<error::Error>> {
                         }
                     }
                     WindowEvent::MouseInput { state, button, .. } => match button {
-                        MouseButton::Left => p.mouse_state.pressed.0 = state == ElementState::Pressed,
+                        MouseButton::Left => {
+                            p.mouse_state.pressed.0 = state == ElementState::Pressed
+                        }
                         MouseButton::Right => {
                             p.mouse_state.pressed.1 = state == ElementState::Pressed
                         }
@@ -400,16 +415,27 @@ fn main() -> Result<(), Box<error::Error>> {
 
         let (width, height) = display.get_framebuffer_dimensions();
 
-        let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
-            * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
-        .into();
+        let ui = imgui.frame(FrameSize::new(width as f64, height as f64, 1.0), dt);
+        update_ui(&ui, &mut p);
 
-        let projection: [[f32; 4]; 4] =
-            perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0).into();
+        
 
-        let uniforms = uniform! {
-            MV: mv,
-            P: projection,
+        let uniforms = {
+
+            let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
+                * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
+            .into();
+
+            let projection: [[f32; 4]; 4] =
+                perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0).into();
+
+            let sun_pos: [f32; 3] = p.sun_pos.into();
+
+            uniform! {
+                MV: mv,
+                P: projection,
+                sunPos: sun_pos,
+            }
         };
 
         let params = glium::DrawParameters {
@@ -422,21 +448,16 @@ fn main() -> Result<(), Box<error::Error>> {
             ..Default::default()
         };
 
-        let ui = imgui.frame(
-            FrameSize::new(
-                width as f64,
-                height as f64,
-                1.0,
-            ),
-            dt
-        );
-
-        update_ui(&ui, &mut p);
-
         let mut target = display.draw();
         target.clear_color(0.0, 0.0, 0.0, 0.0);
         target.clear_depth(1.0);
-        target.draw(&p.vertex_buffer, &p.index_buffer, &p.program, &uniforms, &params)?;
+        target.draw(
+            &p.vertex_buffer,
+            &p.index_buffer,
+            &p.program,
+            &uniforms,
+            &params,
+        )?;
         imgui_renderer.render(&mut target, ui).unwrap();
         target.finish()?;
     }
