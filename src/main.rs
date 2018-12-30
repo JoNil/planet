@@ -3,8 +3,10 @@ use glium::glutin::{dpi::LogicalPosition, Api, GlProfile, GlRequest};
 use glium::{
     backend::Facade,
     draw_parameters::{BackfaceCullingMode, Blend},
+    framebuffer::{DepthRenderBuffer, SimpleFrameBuffer},
     glutin, implement_vertex,
     index::PrimitiveType,
+    texture::{texture2d::Texture2d, DepthFormat, MipmapsOption, UncompressedFloatFormat},
     uniform, Depth, DepthTest, Display, DrawParameters, Program, Surface,
 };
 use imgui::{im_str, FrameSize, ImGui, ImGuiCond, ImGuiKey, Ui};
@@ -282,7 +284,7 @@ fn update_ui<'a>(ui: &Ui<'a>, p: &mut State) {
             {
                 let x = p.sun_angle.to_radians().cos();
                 let y = p.sun_angle.to_radians().sin();
-                p.sun_pos = vec3(10000.0*y, 0.0, 10000.0*-x);
+                p.sun_pos = vec3(10000.0 * y, 0.0, 10000.0 * -x);
             }
 
             ui.text(im_str!("Sun Pos: {:?}", &p.sun_pos));
@@ -322,6 +324,23 @@ fn main() -> Result<(), Box<error::Error>> {
     imgui.set_imgui_key(ImGuiKey::Z, 18);
 
     let mut imgui_renderer = imgui_glium_renderer::Renderer::init(&mut imgui, &display).unwrap();
+
+    let lightmap_texture = {
+        let (width, height) = display.get_framebuffer_dimensions();
+        Texture2d::empty_with_format(
+            &display,
+            UncompressedFloatFormat::F32F32,
+            MipmapsOption::NoMipmap,
+            width,
+            height,
+        )?
+    };
+    let lightmap_depthbuffer = {
+        let (width, height) = display.get_framebuffer_dimensions();
+        DepthRenderBuffer::new(&display, DepthFormat::F32, width, height)?
+    };
+    let lightmap_framebuffer =
+        SimpleFrameBuffer::with_depth_buffer(&display, &lightmap_texture, &lightmap_depthbuffer);
 
     let mut p = State::new(&display)?;
 
