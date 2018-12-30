@@ -556,13 +556,25 @@ fn main() -> Result<(), Box<error::Error>> {
             ..Default::default()
         };
 
-        let cloud_params = DrawParameters {
+        let cloud_params_back = DrawParameters {
             depth: Depth {
                 test: DepthTest::IfLess,
                 write: true,
                 ..Default::default()
             },
             blend: Blend::alpha_blending(),
+            backface_culling: BackfaceCullingMode::CullCounterClockwise,
+            ..Default::default()
+        };
+
+        let cloud_params_forward = DrawParameters {
+            depth: Depth {
+                test: DepthTest::IfLess,
+                write: true,
+                ..Default::default()
+            },
+            blend: Blend::alpha_blending(),
+            backface_culling: BackfaceCullingMode::CullClockwise,
             ..Default::default()
         };
 
@@ -600,7 +612,15 @@ fn main() -> Result<(), Box<error::Error>> {
             &p.index_buffer,
             &p.cloud_program,
             &cloud_uniforms,
-            &cloud_params,
+            &cloud_params_back,
+        )?;
+
+        target.draw(
+            &p.vertex_buffer,
+            &p.index_buffer,
+            &p.cloud_program,
+            &cloud_uniforms,
+            &cloud_params_forward,
         )?;
 
         imgui_renderer.render(&mut target, ui).unwrap();

@@ -219,8 +219,4 @@ void main () {
 	
 	vec3 resultLight = ambient + diffuse;// + specular;
 	FragColor = color;//vec4(resultLight, texAlpha);
-
-  if (color.a == 0.0) {
-    discard;
-  }
 }
