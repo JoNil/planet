@@ -271,7 +271,7 @@ void main () {
     float red = step(sandHeight, Altitude) *  step(Altitude, snowHeight  + snowNoise) * noise;
     float blue = step(Altitude, oceanHeight) * (1.f - (oceanHeight - Altitude));
     float green = step(sandHeight, Altitude) *  step(Altitude, snowHeight + snowNoise) * (1 - noise);
-    vec3 sandColor = vec3(255.f, 224.f, 158.f) * step(oceanHeight, Altitude) * step(Altitude, sandHeight);
+    vec3 sandColor = vec3(1.f, 0.878f, 0.619f) * step(oceanHeight, Altitude) * step(Altitude, sandHeight);
 
     float snowHeightNoise = snowHeight + snowNoise;
     vec3 snowColor = vec3(1.f, 1.f, 1.f);
@@ -287,29 +287,27 @@ void main () {
 
     // city lights
     float cityLightNoise = clamp(dot(normal, -lightDir), 0.0f, 1.0f) * smoothstep(0.0, 0.2, snoise(vPos.xyz * 1)) * smoothstep(0.2, 0.4, snoise(vPos.xyz * 3)) * clamp(snoise(vPos.xyz * 15) + 0.2, 0.0, 1.0);
-    vec3 lightPolutionColor = vec3(1.0f, 0.7725f, 0.0f);
-    vec3 emissive = lightPolutionColor * step(sandHeight, Altitude) *  step(Altitude, snowHeight - 0.06) * cityLightNoise;
+    vec3 lightPolutionColor = vec3(1.0f, 0.98f, 0.914f);
+    vec3 lightPolutionColor2 = vec3(0.961f, 0.518f, 0.29f);
+    vec3 emissive = mix(lightPolutionColor2, lightPolutionColor2, cityLightNoise) * step(sandHeight, Altitude) *  step(Altitude, snowHeight - 0.06) * cityLightNoise;
     clamp(color, vec3(0.f), vec3(1.0f));
-
-    // sun light
-    float lightIntensity = 0.6f/length(lightDir);
 
     //Diffuse part-----------
     float diff = max(dot(lightDir, normal), 0.0);
-    vec3 diffuse = diff * color * lightIntensity;
+    vec3 diffuse = diff * color;
 
     //specular part-------------
-    const float shininess = 1000.0;
+    const float shininess = 8.0;
     vec3 H = normalize(lightDir + viewDir);
     float NdH = max(dot(H, normal), 0.0);
     float spec = pow(NdH, shininess);
     vec3 specularColor = vec3(0.2f, 0.2f, 0.2f);
-    vec3 sunColor = vec3(0.9921f, 1.0f, 0.8039f);
+    vec3 sunColor = vec3(0.9321f, 0.97f, 0.7039f);
     vec3 specular = mix(vec3(0.0), spec * sunColor, step(Altitude, oceanHeight));
 
     // Ambient-------------
-    vec3 ambient = 0.1f * lightIntensity * color * lightIntensity;
+    vec3 ambient = 0.08f * color;
 
-    vec3 resultLight = ambient + diffuse + specular * 0.3f + emissive;
-    FragColor = vec4(resultLight, 1.0f);
+    vec3 resultLight = ambient + diffuse + specular * 0.8f + emissive;
+    FragColor = vec4(pow(resultLight, vec3(2.2)), 1.0f);
 }
