@@ -1,0 +1,7 @@
+
+
+float green = step(sandHeight, Altitude) *  step(Altitude, snowHeight + snowNoise) * (1 - noise);
+
+	Check that the altitude larger than sandheight and smaller than snowheight plus some noise to avoid a sharp edge, these areas are grass areas and should have a green/ yellow ish color 
+
+fbm - https://code.google.com/archive/p/fractalterraingeneration/wikis/Fractional_Brownian_Motion.wiki
