@@ -152,17 +152,21 @@ struct State {
     program: Program,
     program_time: SystemTime,
 
+    cloud_program: Program,
+    cloud_program_time: SystemTime,
+
     run: bool,
     right_pressed: bool,
     left_pressed: bool,
     rot: f32,
     last_time: Instant,
-    average_fram_time: f32,
+    average_frame_time: f32,
     mouse_state: MouseState,
 }
 
 impl State {
     fn new<F: Facade>(facade: &F) -> Result<State, Box<error::Error>> {
+
         let (vertex_buffer, index_buffer) = {
             const VSEGS: usize = 1024;
             const HSEGS: usize = VSEGS * 2;
@@ -193,6 +197,9 @@ impl State {
         let program = load_shader(facade, "planet")?;
         let program_time = get_shader_change_time("planet")?;
 
+        let cloud_program = load_shader(facade, "cloud")?;
+        let cloud_program_time = get_shader_change_time("cloud")?;
+
         Ok(State {
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
@@ -203,12 +210,15 @@ impl State {
             program: program,
             program_time: program_time,
 
+            cloud_program: cloud_program,
+            cloud_program_time: cloud_program_time,
+
             run: true,
             right_pressed: false,
             left_pressed: false,
             rot: 0.0,
             last_time: Instant::now(),
-            average_fram_time: 0.0,
+            average_frame_time: 0.0,
             mouse_state: MouseState::new(),
         })
     }
@@ -220,8 +230,8 @@ fn update_ui<'a>(ui: &Ui<'a>, p: &mut State) {
         .build(|| {
             ui.text(im_str!(
                 "{:.1} fps ({:.1} ms)",
-                1.0 / p.average_fram_time,
-                p.average_fram_time * 1000.0,
+                1.0 / p.average_frame_time,
+                p.average_frame_time * 1000.0,
             ));
 
             if ui
@@ -281,7 +291,7 @@ fn main() -> Result<(), Box<error::Error>> {
             duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
         };
 
-        p.average_fram_time = p.average_fram_time * 0.95 + dt * 0.05;
+        p.average_frame_time = p.average_frame_time * 0.95 + dt * 0.05;
 
         {
             let new_time = get_shader_change_time("planet")?;
@@ -293,6 +303,19 @@ fn main() -> Result<(), Box<error::Error>> {
                     }
                 }
                 p.program_time = new_time;
+            }
+        }
+
+        {
+            let new_time = get_shader_change_time("cloud")?;
+            if new_time > p.cloud_program_time {
+                match load_shader(&display, "cloud") {
+                    Ok(program) => p.cloud_program = program,
+                    Err(e) => {
+                        print!("{}", e);
+                    }
+                }
+                p.cloud_program_time = new_time;
             }
         }
 
