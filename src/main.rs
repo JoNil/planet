@@ -11,6 +11,7 @@ use glium::{
 };
 use imgui::{im_str, FrameSize, ImGui, ImGuiCond, ImGuiKey, Ui};
 use rand::distributions::{Distribution, UnitSphereSurface};
+use std::borrow::Cow;
 use std::cmp::max;
 use std::error;
 use std::f32::consts::PI;
@@ -49,6 +50,93 @@ impl MouseState {
             pos: (0, 0),
             pressed: (false, false, false),
             wheel: 0.0,
+        }
+    }
+}
+
+fn get_shader_change_time(
+    frag_path: &str,
+    vert_path: &str,
+) -> Result<SystemTime, Box<error::Error>> {
+    let metadata_vert = fs::metadata(frag_path)?;
+    let metadata_frag = fs::metadata(vert_path)?;
+    Ok(max(metadata_vert.modified()?, metadata_frag.modified()?))
+}
+
+struct Shader {
+    program: Program,
+    program_time: SystemTime,
+    frag_path: String,
+    vert_path: String,
+}
+
+impl Shader {
+    fn load_shadowmap<F: Facade>(facade: &F, name: &str) -> Result<Shader, Box<error::Error>> {
+        let frag_path = format!("shaders/{}_shadowmap.frag", name);
+        let vert_path = format!("shaders/{}.vert", name);
+        let program_time = get_shader_change_time(&frag_path, &vert_path)?;
+        Shader::new(
+            facade,
+            program_time,
+            Cow::Owned(frag_path),
+            Cow::Owned(vert_path),
+        )
+    }
+
+    fn load<F: Facade>(facade: &F, name: &str) -> Result<Shader, Box<error::Error>> {
+        let frag_path = format!("shaders/{}.frag", name);
+        let vert_path = format!("shaders/{}.vert", name);
+        let program_time = get_shader_change_time(&frag_path, &vert_path)?;
+        Shader::new(
+            facade,
+            program_time,
+            Cow::Owned(frag_path),
+            Cow::Owned(vert_path),
+        )
+    }
+
+    fn new<F: Facade>(
+        facade: &F,
+        program_time: SystemTime,
+        frag_path: Cow<str>,
+        vert_path: Cow<str>,
+    ) -> Result<Shader, Box<error::Error>> {
+        let input = glium::program::ProgramCreationInput::SourceCode {
+            vertex_shader: &fs::read_to_string(&*vert_path)?,
+            tessellation_control_shader: None,
+            tessellation_evaluation_shader: None,
+            geometry_shader: None,
+            fragment_shader: &fs::read_to_string(&*frag_path)?,
+            transform_feedback_varyings: None,
+            outputs_srgb: false,
+            uses_point_size: true,
+        };
+
+        Ok(Shader {
+            program: Program::new(facade, input)?,
+            program_time: program_time,
+            frag_path: frag_path.into_owned(),
+            vert_path: vert_path.into_owned(),
+        })
+    }
+
+    fn reload_if_changed<F: Facade>(&mut self, facade: &F) {
+        if let Ok(new_time) = get_shader_change_time(&self.frag_path, &self.vert_path) {
+            if new_time > self.program_time {
+                match Shader::new(
+                    facade,
+                    new_time,
+                    Cow::Borrowed(&self.frag_path),
+                    Cow::Borrowed(&self.vert_path),
+                ) {
+                    Ok(program) => {
+                        *self = program;
+                    }
+                    Err(e) => {
+                        print!("{}", e);
+                    }
+                }
+            }
         }
     }
 }
@@ -139,44 +227,19 @@ fn create_sphere(vertices: &mut [Vertex], indices: &mut [Triangle], radius: f32,
     }
 }
 
-fn load_shader<F: Facade>(facade: &F, name: &str) -> Result<Program, Box<error::Error>> {
-    let input = glium::program::ProgramCreationInput::SourceCode {
-        vertex_shader: &fs::read_to_string(&format!("shaders/{}.vert", name))?,
-        tessellation_control_shader: None,
-        tessellation_evaluation_shader: None,
-        geometry_shader: None,
-        fragment_shader: &fs::read_to_string(&format!("shaders/{}.frag", name))?,
-        transform_feedback_varyings: None,
-        outputs_srgb: false,
-        uses_point_size: true,
-    };
-
-    Ok(Program::new(facade, input)?)
-}
-
-fn get_shader_change_time(name: &str) -> Result<SystemTime, Box<error::Error>> {
-    let metadata_vert = fs::metadata(&format!("shaders/{}.vert", name))?;
-    let metadata_frag = fs::metadata(&format!("shaders/{}.frag", name))?;
-    Ok(max(metadata_vert.modified()?, metadata_frag.modified()?))
-}
-
 struct State {
     vertex_buffer: glium::VertexBuffer<Vertex>,
     index_buffer: glium::IndexBuffer<u32>,
-
     star_buffer: glium::VertexBuffer<StarVertex>,
 
     sun_pos: Vector3<f32>,
     sun_angle: f32,
 
-    program: Program,
-    program_time: SystemTime,
-
-    cloud_program: Program,
-    cloud_program_time: SystemTime,
-
-    star_program: Program,
-    star_program_time: SystemTime,
+    planet_program: Shader,
+    planet_shadowmap_program: Shader,
+    cloud_program: Shader,
+    cloud_shadowmap_program: Shader,
+    star_program: Shader,
 
     run: bool,
     right_pressed: bool,
@@ -235,32 +298,19 @@ impl State {
             vertex_buffer
         };
 
-        let program = load_shader(facade, "planet")?;
-        let program_time = get_shader_change_time("planet")?;
-
-        let cloud_program = load_shader(facade, "cloud")?;
-        let cloud_program_time = get_shader_change_time("cloud")?;
-
-        let star_program = load_shader(facade, "stars")?;
-        let star_program_time = get_shader_change_time("stars")?;
-
         Ok(State {
             vertex_buffer: vertex_buffer,
             index_buffer: index_buffer,
-
             star_buffer: star_buffer,
 
             sun_pos: vec3(0.0, 0.0, -1.0),
             sun_angle: 0.0,
 
-            program: program,
-            program_time: program_time,
-
-            cloud_program: cloud_program,
-            cloud_program_time: cloud_program_time,
-
-            star_program: star_program,
-            star_program_time: star_program_time,
+            planet_program: Shader::load(facade, "planet")?,
+            planet_shadowmap_program: Shader::load_shadowmap(facade, "planet")?,
+            cloud_program: Shader::load(facade, "cloud")?,
+            cloud_shadowmap_program: Shader::load_shadowmap(facade, "cloud")?,
+            star_program: Shader::load(facade, "stars")?,
 
             run: true,
             right_pressed: false,
@@ -360,44 +410,11 @@ fn main() -> Result<(), Box<error::Error>> {
 
         p.average_frame_time = p.average_frame_time * 0.95 + dt * 0.05;
 
-        {
-            let new_time = get_shader_change_time("planet")?;
-            if new_time > p.program_time {
-                match load_shader(&display, "planet") {
-                    Ok(program) => p.program = program,
-                    Err(e) => {
-                        print!("{}", e);
-                    }
-                }
-                p.program_time = new_time;
-            }
-        }
-
-        {
-            let new_time = get_shader_change_time("cloud")?;
-            if new_time > p.cloud_program_time {
-                match load_shader(&display, "cloud") {
-                    Ok(program) => p.cloud_program = program,
-                    Err(e) => {
-                        print!("{}", e);
-                    }
-                }
-                p.cloud_program_time = new_time;
-            }
-        }
-
-        {
-            let new_time = get_shader_change_time("stars")?;
-            if new_time > p.star_program_time {
-                match load_shader(&display, "stars") {
-                    Ok(program) => p.star_program = program,
-                    Err(e) => {
-                        print!("{}", e);
-                    }
-                }
-                p.star_program_time = new_time;
-            }
-        }
+        p.planet_program.reload_if_changed(&display);
+        p.planet_shadowmap_program.reload_if_changed(&display);
+        p.cloud_program.reload_if_changed(&display);
+        p.cloud_shadowmap_program.reload_if_changed(&display);
+        p.star_program.reload_if_changed(&display);
 
         event_loop.poll_events(|event| {
             use glium::glutin::{
@@ -557,7 +574,8 @@ fn main() -> Result<(), Box<error::Error>> {
                     sunPos: sun_pos,
                 }
             };
-            let planet_params = DrawParameters {
+
+            let clockwise_params = DrawParameters {
                 depth: Depth {
                     test: DepthTest::IfLess,
                     write: true,
@@ -567,25 +585,13 @@ fn main() -> Result<(), Box<error::Error>> {
                 ..Default::default()
             };
 
-            let cloud_params_back = DrawParameters {
+            let counter_clockwise_params = DrawParameters {
                 depth: Depth {
                     test: DepthTest::IfLess,
                     write: true,
                     ..Default::default()
                 },
-                blend: Blend::alpha_blending(),
                 backface_culling: BackfaceCullingMode::CullCounterClockwise,
-                ..Default::default()
-            };
-
-            let cloud_params_forward = DrawParameters {
-                depth: Depth {
-                    test: DepthTest::IfLess,
-                    write: true,
-                    ..Default::default()
-                },
-                blend: Blend::alpha_blending(),
-                backface_culling: BackfaceCullingMode::CullClockwise,
                 ..Default::default()
             };
 
@@ -595,25 +601,25 @@ fn main() -> Result<(), Box<error::Error>> {
             shadowmap_framebuffer.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
-                &p.program,
+                &p.planet_shadowmap_program.program,
                 &planet_uniforms,
-                &planet_params,
+                &clockwise_params,
             )?;
 
             shadowmap_framebuffer.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
-                &p.cloud_program,
+                &p.cloud_shadowmap_program.program,
                 &cloud_uniforms,
-                &cloud_params_back,
+                &counter_clockwise_params,
             )?;
 
             shadowmap_framebuffer.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
-                &p.cloud_program,
+                &p.cloud_shadowmap_program.program,
                 &cloud_uniforms,
-                &cloud_params_forward,
+                &clockwise_params,
             )?;
         }
 
@@ -696,7 +702,7 @@ fn main() -> Result<(), Box<error::Error>> {
             target.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
-                &p.program,
+                &p.planet_program.program,
                 &planet_uniforms,
                 &planet_params,
             )?;
@@ -704,7 +710,7 @@ fn main() -> Result<(), Box<error::Error>> {
             target.draw(
                 &p.star_buffer,
                 &glium::index::NoIndices(PrimitiveType::Points),
-                &p.star_program,
+                &p.star_program.program,
                 &star_uniforms,
                 &star_params,
             )?;
@@ -712,7 +718,7 @@ fn main() -> Result<(), Box<error::Error>> {
             target.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
-                &p.cloud_program,
+                &p.cloud_program.program,
                 &cloud_uniforms,
                 &cloud_params_back,
             )?;
@@ -720,12 +726,12 @@ fn main() -> Result<(), Box<error::Error>> {
             target.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
-                &p.cloud_program,
+                &p.cloud_program.program,
                 &cloud_uniforms,
                 &cloud_params_forward,
             )?;
 
-            /*target.blit_from_simple_framebuffer(
+            target.blit_from_simple_framebuffer(
                 &shadowmap_framebuffer,
                 &glium::Rect {
                     left: 0,
@@ -740,7 +746,7 @@ fn main() -> Result<(), Box<error::Error>> {
                     height: height as i32,
                 },
                 glium::uniforms::MagnifySamplerFilter::Linear,
-            );*/
+            );
 
             imgui_renderer.render(&mut target, ui).unwrap();
             target.finish()?;
