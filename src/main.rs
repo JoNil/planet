@@ -541,6 +541,8 @@ fn main() -> Result<(), Box<error::Error>> {
             let projection: [[f32; 4]; 4] =
                 perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0).into();
 
+            let sun_pos: [f32; 3] = p.sun_pos.into();
+
             let time = {
                 let duration = Instant::now().duration_since(p.start_time);
                 duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
@@ -549,6 +551,7 @@ fn main() -> Result<(), Box<error::Error>> {
             uniform! {
                 MV: mv,
                 P: projection,
+                sunPos: sun_pos,
                 time: time,
             }
         };

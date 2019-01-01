@@ -7,7 +7,6 @@ in vec3 Normal;
 in vec2 UV;
 in float Altitude;
 
-//uniform vec3 LP;
 uniform vec3 sunPos;
 uniform sampler2D tex;
 

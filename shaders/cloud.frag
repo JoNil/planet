@@ -5,9 +5,11 @@ in vec3 Position;
 in vec3 vPos;
 in vec3 Normal;
 
+uniform vec3 sunPos;
 uniform float time;
 
 const float shininess = 1.0;
+
 
 //	Classic Perlin 3D Noise 
 //	by Stefan Gustavson
@@ -195,28 +197,18 @@ void main () {
 
 	////////////////////////////////////////////////////////////////////////////
 	// Lighting
-  vec3 sunPos = vec3(0.f, -1.0f, 1.0f);
 	vec3 lightDir = normalize(sunPos - Position);
 	vec3 viewDir  = normalize(-Position);
-		
-	float lightIntensity = 0.6f/length(lightDir);
+	
 	lightDir = normalize(lightDir);
-
-	vec3 white = vec3(1.0f, 1.0f, 1.0f);
 
 	//Diffuse part-----------
 	float diff = max(dot(lightDir, normal), 0.0);
-	vec3 diffuse = diff * vec3(color) * lightIntensity;
-
-	//specular part-------------
-	vec3 H = normalize(lightDir + viewDir);
-	float NdH = max(dot(H, normal), 0.0);
-	float spec = pow(NdH, shininess);
-	vec3 specular = spec * white;
+	vec4 diffuse = diff * color;
 
 	// Ambient-------------
-	vec3 ambient = 0.3*lightIntensity * white;// * texcolor * lightIntensity;
+	vec4 ambient = 0.3 * color;
 	
-	vec3 resultLight = ambient + diffuse;// + specular;
-	FragColor = color;//vec4(resultLight, texAlpha);
+	vec4 resultLight = ambient + diffuse;
+	FragColor = resultLight;
 }
