@@ -140,12 +140,18 @@ fn create_sphere(vertices: &mut [Vertex], indices: &mut [Triangle], radius: f32,
 }
 
 fn load_shader<F: Facade>(facade: &F, name: &str) -> Result<Program, Box<error::Error>> {
-    Ok(Program::from_source(
-        facade,
-        &fs::read_to_string(&format!("shaders/{}.vert", name))?,
-        &fs::read_to_string(&format!("shaders/{}.frag", name))?,
-        None,
-    )?)
+    let input = glium::program::ProgramCreationInput::SourceCode {
+        vertex_shader: &fs::read_to_string(&format!("shaders/{}.vert", name))?,
+        tessellation_control_shader: None,
+        tessellation_evaluation_shader: None,
+        geometry_shader: None,
+        fragment_shader: &fs::read_to_string(&format!("shaders/{}.frag", name))?,
+        transform_feedback_varyings: None,
+        outputs_srgb: false,
+        uses_point_size: true,
+    };
+
+    Ok(Program::new(facade, input)?)
 }
 
 fn get_shader_change_time(name: &str) -> Result<SystemTime, Box<error::Error>> {
@@ -335,12 +341,12 @@ fn main() -> Result<(), Box<error::Error>> {
             height,
         )?
     };
-    let lightmap_depthbuffer = {
+    let shadowmap_depthbuffer = {
         let (width, height) = display.get_framebuffer_dimensions();
         DepthRenderBuffer::new(&display, DepthFormat::F32, width, height)?
     };
-    let mut lightmap_framebuffer =
-        SimpleFrameBuffer::with_depth_buffer(&display, &lightmap_texture, &lightmap_depthbuffer)?;
+    let mut shadowmap_framebuffer =
+        SimpleFrameBuffer::with_depth_buffer(&display, &lightmap_texture, &shadowmap_depthbuffer)?;
 
     let mut p = State::new(&display)?;
 
@@ -515,113 +521,86 @@ fn main() -> Result<(), Box<error::Error>> {
         let ui = imgui.frame(FrameSize::new(width as f64, height as f64, 1.0), dt);
         update_ui(&ui, &mut p);
 
-        let uniforms = {
-            let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
-                * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
-            .into();
+        let planet_matrix = Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
+            * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot));
+        let cloud_matrix = Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
+            * Matrix4::from_scale(1.2)
+            * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot));
 
-            let projection: [[f32; 4]; 4] =
-                perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0).into();
+        let projection = perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0);
 
-            let sun_pos: [f32; 3] = p.sun_pos.into();
-
-            uniform! {
-                MV: mv,
-                P: projection,
-                sunPos: sun_pos,
-            }
-        };
-
-        let cloud_uniforms = {
-            let mv: [[f32; 4]; 4] = (Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
-                * Matrix4::from_scale(1.2)
-                * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
-            .into();
-
-            let projection: [[f32; 4]; 4] =
-                perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0).into();
-
-            let sun_pos: [f32; 3] = p.sun_pos.into();
-
-            let time = {
-                let duration = Instant::now().duration_since(p.start_time);
-                duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
-            };
-
-            uniform! {
-                MV: mv,
-                P: projection,
-                sunPos: sun_pos,
-                time: time,
-            }
-        };
-
-        let star_uniforms = {
-            let mvp: [[f32; 4]; 4] =
-                (perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0)
-                    * Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
-                    * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot)))
-                .into();
-
-            uniform! {
-                mvp: mvp,
-            }
-        };
-
-        let params = DrawParameters {
-            depth: Depth {
-                test: DepthTest::IfLess,
-                write: true,
-                ..Default::default()
-            },
-            backface_culling: BackfaceCullingMode::CullClockwise,
-            ..Default::default()
-        };
-
-        let cloud_params_back = DrawParameters {
-            depth: Depth {
-                test: DepthTest::IfLess,
-                write: true,
-                ..Default::default()
-            },
-            blend: Blend::alpha_blending(),
-            backface_culling: BackfaceCullingMode::CullCounterClockwise,
-            ..Default::default()
-        };
-
-        let cloud_params_forward = DrawParameters {
-            depth: Depth {
-                test: DepthTest::IfLess,
-                write: true,
-                ..Default::default()
-            },
-            blend: Blend::alpha_blending(),
-            backface_culling: BackfaceCullingMode::CullClockwise,
-            ..Default::default()
-        };
-
-        let star_params = DrawParameters {
-            depth: Depth {
-                test: DepthTest::IfLess,
-                write: true,
-                ..Default::default()
-            },
-            ..Default::default()
+        let time = {
+            let duration = Instant::now().duration_since(p.start_time);
+            duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
         };
 
         {
-            lightmap_framebuffer.clear_color(0.0, 0.0, 0.0, 0.0);
-            lightmap_framebuffer.clear_depth(1.0);
+            let planet_uniforms = {
+                let mv: [[f32; 4]; 4] = planet_matrix.into();
+                let projection: [[f32; 4]; 4] = projection.into();
+                let sun_pos: [f32; 3] = p.sun_pos.into();
+                uniform! {
+                    MV: mv,
+                    P: projection,
+                    sunPos: sun_pos,
+                }
+            };
 
-            lightmap_framebuffer.draw(
+            let cloud_uniforms = {
+                let mv: [[f32; 4]; 4] = cloud_matrix.into();
+                let projection: [[f32; 4]; 4] = projection.into();
+                let sun_pos: [f32; 3] = p.sun_pos.into();
+                uniform! {
+                    MV: mv,
+                    P: projection,
+                    time: time,
+                    sunPos: sun_pos,
+                }
+            };
+            let planet_params = DrawParameters {
+                depth: Depth {
+                    test: DepthTest::IfLess,
+                    write: true,
+                    ..Default::default()
+                },
+                backface_culling: BackfaceCullingMode::CullClockwise,
+                ..Default::default()
+            };
+
+            let cloud_params_back = DrawParameters {
+                depth: Depth {
+                    test: DepthTest::IfLess,
+                    write: true,
+                    ..Default::default()
+                },
+                blend: Blend::alpha_blending(),
+                backface_culling: BackfaceCullingMode::CullCounterClockwise,
+                ..Default::default()
+            };
+
+            let cloud_params_forward = DrawParameters {
+                depth: Depth {
+                    test: DepthTest::IfLess,
+                    write: true,
+                    ..Default::default()
+                },
+                blend: Blend::alpha_blending(),
+                backface_culling: BackfaceCullingMode::CullClockwise,
+                ..Default::default()
+            };
+
+            shadowmap_framebuffer.clear_color(0.0, 0.0, 0.0, 0.0);
+            shadowmap_framebuffer.clear_depth(1.0);
+
+            shadowmap_framebuffer.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
                 &p.program,
-                &uniforms,
-                &params,
+                &planet_uniforms,
+                &planet_params,
             )?;
 
-            lightmap_framebuffer.draw(
+            shadowmap_framebuffer.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
                 &p.cloud_program,
@@ -629,7 +608,7 @@ fn main() -> Result<(), Box<error::Error>> {
                 &cloud_params_back,
             )?;
 
-            lightmap_framebuffer.draw(
+            shadowmap_framebuffer.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
                 &p.cloud_program,
@@ -639,6 +618,77 @@ fn main() -> Result<(), Box<error::Error>> {
         }
 
         {
+            let planet_uniforms = {
+                let mv: [[f32; 4]; 4] = planet_matrix.into();
+                let projection: [[f32; 4]; 4] = projection.into();
+                let sun_pos: [f32; 3] = p.sun_pos.into();
+                uniform! {
+                    MV: mv,
+                    P: projection,
+                    sunPos: sun_pos,
+                }
+            };
+
+            let cloud_uniforms = {
+                let mv: [[f32; 4]; 4] = cloud_matrix.into();
+                let projection: [[f32; 4]; 4] = projection.into();
+                let sun_pos: [f32; 3] = p.sun_pos.into();
+                uniform! {
+                    MV: mv,
+                    P: projection,
+                    time: time,
+                    sunPos: sun_pos,
+                }
+            };
+
+            let star_uniforms = {
+                let mvp: [[f32; 4]; 4] = (projection * planet_matrix).into();
+                uniform! {
+                    mvp: mvp,
+                }
+            };
+
+            let planet_params = DrawParameters {
+                depth: Depth {
+                    test: DepthTest::IfLess,
+                    write: true,
+                    ..Default::default()
+                },
+                backface_culling: BackfaceCullingMode::CullClockwise,
+                ..Default::default()
+            };
+
+            let cloud_params_back = DrawParameters {
+                depth: Depth {
+                    test: DepthTest::IfLess,
+                    write: true,
+                    ..Default::default()
+                },
+                blend: Blend::alpha_blending(),
+                backface_culling: BackfaceCullingMode::CullCounterClockwise,
+                ..Default::default()
+            };
+
+            let cloud_params_forward = DrawParameters {
+                depth: Depth {
+                    test: DepthTest::IfLess,
+                    write: true,
+                    ..Default::default()
+                },
+                blend: Blend::alpha_blending(),
+                backface_culling: BackfaceCullingMode::CullClockwise,
+                ..Default::default()
+            };
+
+            let star_params = DrawParameters {
+                depth: Depth {
+                    test: DepthTest::IfLess,
+                    write: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
             let mut target = display.draw();
             target.clear_color(0.0, 0.0, 0.0, 0.0);
             target.clear_depth(1.0);
@@ -647,8 +697,8 @@ fn main() -> Result<(), Box<error::Error>> {
                 &p.vertex_buffer,
                 &p.index_buffer,
                 &p.program,
-                &uniforms,
-                &params,
+                &planet_uniforms,
+                &planet_params,
             )?;
 
             target.draw(
@@ -674,6 +724,23 @@ fn main() -> Result<(), Box<error::Error>> {
                 &cloud_uniforms,
                 &cloud_params_forward,
             )?;
+
+            /*target.blit_from_simple_framebuffer(
+                &shadowmap_framebuffer,
+                &glium::Rect {
+                    left: 0,
+                    bottom: 0,
+                    width: width,
+                    height: height,
+                },
+                &glium::BlitTarget {
+                    left: 0,
+                    bottom: 0,
+                    width: width as i32,
+                    height: height as i32,
+                },
+                glium::uniforms::MagnifySamplerFilter::Linear,
+            );*/
 
             imgui_renderer.render(&mut target, ui).unwrap();
             target.finish()?;
