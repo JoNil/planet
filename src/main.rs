@@ -1,4 +1,4 @@
-use cgmath::{perspective, vec3, Deg, Matrix4, Vector3};
+use cgmath::{perspective, vec3, Deg, Matrix4, Vector3, ortho, Point3, SquareMatrix, conv::{array4x4, array3}, InnerSpace};
 use glium::glutin::{dpi::LogicalPosition, Api, GlProfile, GlRequest};
 use glium::{
     backend::Facade,
@@ -535,12 +535,14 @@ fn main() -> Result<(), Box<error::Error>> {
 
         let (width, height) = display.get_framebuffer_dimensions();
 
+        let planet_pos = vec3(0.0, 0.0, -3.0);
+
         let ui = imgui.frame(FrameSize::new(width as f64, height as f64, 1.0), dt);
         update_ui(&ui, &mut p);
 
-        let planet_matrix = Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
+        let planet_matrix = Matrix4::from_translation(planet_pos)
             * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot));
-        let cloud_matrix = Matrix4::from_translation(vec3(0.0, 0.0, -3.0))
+        let cloud_matrix = Matrix4::from_translation(planet_pos)
             * Matrix4::from_scale(1.2)
             * Matrix4::from_axis_angle(vec3(0.0, 1.0, 0.0), Deg(p.rot));
 
@@ -552,28 +554,27 @@ fn main() -> Result<(), Box<error::Error>> {
         };
 
         {
-            let planet_uniforms = {
-                let mv: [[f32; 4]; 4] = planet_matrix.into();
-                let projection: [[f32; 4]; 4] = projection.into();
-                let sun_pos: [f32; 3] = p.sun_pos.into();
-                uniform! {
-                    MV: mv,
-                    P: projection,
-                    sunPos: sun_pos,
-                }
-            };
+            let dist = (planet_pos - p.sun_pos).magnitude();
 
-            let cloud_uniforms = {
-                let mv: [[f32; 4]; 4] = cloud_matrix.into();
-                let projection: [[f32; 4]; 4] = projection.into();
-                let sun_pos: [f32; 3] = p.sun_pos.into();
+            let shadowmap_projection = ortho(-1.5, 1.5, -1.5, 1.5, dist - 1.5, dist + 1.5);
+            let sun_look_at_planet = Matrix4::look_at(
+                Point3 { x: p.sun_pos.x, y: p.sun_pos.y, z: p.sun_pos.z },
+                Point3 { x: planet_pos.x, y: planet_pos.y, z: planet_pos.z }, vec3(0.0, 1.0, 0.0));
+
+            let planet_uniforms =
                 uniform! {
-                    MV: mv,
-                    P: projection,
+                    MV: array4x4(planet_matrix),
+                    P: array4x4(shadowmap_projection * sun_look_at_planet),
+                    sunPos: array3(p.sun_pos),
+                };
+
+            let cloud_uniforms = 
+                uniform! {
+                    MV: array4x4(cloud_matrix),
+                    P: array4x4(shadowmap_projection * sun_look_at_planet),
                     time: time,
-                    sunPos: sun_pos,
-                }
-            };
+                    sunPos: array3(p.sun_pos),
+                };
 
             let clockwise_params = DrawParameters {
                 depth: Depth {
@@ -606,7 +607,7 @@ fn main() -> Result<(), Box<error::Error>> {
                 &clockwise_params,
             )?;
 
-            shadowmap_framebuffer.draw(
+            /*shadowmap_framebuffer.draw(
                 &p.vertex_buffer,
                 &p.index_buffer,
                 &p.cloud_shadowmap_program.program,
@@ -620,39 +621,29 @@ fn main() -> Result<(), Box<error::Error>> {
                 &p.cloud_shadowmap_program.program,
                 &cloud_uniforms,
                 &clockwise_params,
-            )?;
+            )?;*/
         }
 
         {
-            let planet_uniforms = {
-                let mv: [[f32; 4]; 4] = planet_matrix.into();
-                let projection: [[f32; 4]; 4] = projection.into();
-                let sun_pos: [f32; 3] = p.sun_pos.into();
+            let planet_uniforms = 
                 uniform! {
-                    MV: mv,
-                    P: projection,
-                    sunPos: sun_pos,
-                }
-            };
+                    MV: array4x4(planet_matrix),
+                    P: array4x4(projection),
+                    sunPos: array3(p.sun_pos),
+                };
 
-            let cloud_uniforms = {
-                let mv: [[f32; 4]; 4] = cloud_matrix.into();
-                let projection: [[f32; 4]; 4] = projection.into();
-                let sun_pos: [f32; 3] = p.sun_pos.into();
+            let cloud_uniforms = 
                 uniform! {
-                    MV: mv,
-                    P: projection,
+                    MV: array4x4(cloud_matrix),
+                    P: array4x4(projection),
                     time: time,
-                    sunPos: sun_pos,
-                }
-            };
+                    sunPos: array3(p.sun_pos),
+                };
 
-            let star_uniforms = {
-                let mvp: [[f32; 4]; 4] = (projection * planet_matrix).into();
+            let star_uniforms = 
                 uniform! {
-                    mvp: mvp,
-                }
-            };
+                    mvp: array4x4(projection * planet_matrix),
+                };
 
             let planet_params = DrawParameters {
                 depth: Depth {
@@ -742,8 +733,8 @@ fn main() -> Result<(), Box<error::Error>> {
                 &glium::BlitTarget {
                     left: 0,
                     bottom: 0,
-                    width: width as i32,
-                    height: height as i32,
+                    width: width as i32 / 3,
+                    height: height as i32 / 3,
                 },
                 glium::uniforms::MagnifySamplerFilter::Linear,
             );
