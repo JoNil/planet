@@ -191,7 +191,7 @@ struct State {
 impl State {
     fn new<F: Facade>(facade: &F) -> Result<State, Box<error::Error>> {
         let (vertex_buffer, index_buffer) = {
-            const VSEGS: usize = 1024;
+            const VSEGS: usize = 512;
             const HSEGS: usize = VSEGS * 2;
             const NVERTS: usize = 1 + (VSEGS - 1) * (HSEGS + 1) + 1; // top + middle + bottom
             const NTRIS: usize = HSEGS + (VSEGS - 2) * HSEGS * 2 + HSEGS; // top + middle + bottom
