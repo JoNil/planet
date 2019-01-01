@@ -118,8 +118,8 @@ float cnoise(vec3 P)
 
 void main () 
 {
-	vec4 position = mvp * vec4(500.0*pos, 1.0);
-	Position = pos.xy;
-    gl_Position = position;
-    gl_PointSize = cnoise(position.xyz) * 50.0f;
+	vec4 position = vec4(500.0*pos, 1.0);
+	Position = position.xy;
+    gl_Position = mvp * position;
+    gl_PointSize = clamp(cnoise(position.xyz) * 3.0f, 0.3f, 3.0f);
 }

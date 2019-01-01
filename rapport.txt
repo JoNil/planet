@@ -1,0 +1,16 @@
+
+
+float green = step(sandHeight, Altitude) *  step(Altitude, snowHeight + snowNoise) * (1 - noise);
+
+	Check that the altitude larger than sandheight and smaller than snowheight plus some noise to avoid a sharp edge, these areas are grass areas and should have a green/ yellow ish color 
+
+fbm - https://code.google.com/archive/p/fractalterraingeneration/wikis/Fractional_Brownian_Motion.wiki
+
+
+
+stars --
+	float r = clamp(cnoise(Position), 0.1f, 1.0f);
+	float g = clamp(cnoise(sin(Position)), 0.1f, 1.0f);
+	float b = clamp(cnoise(cos(Position)), 0.1f, 1.0f);
+
+	use b + g on rgb channel to make blue and green stars yellow ish or whiter if the red channel has a value aswell. compute random valur for both g and b to reduce increase the chance of a whit / yellow star compared to red star.

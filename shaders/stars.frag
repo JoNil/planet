@@ -80,6 +80,8 @@ float cnoise(vec2 P)
 void main ()
 {
 
-
-    color = vec4(1.0, 0.0, 0.0, 1.0);
+	float r = clamp(cnoise(Position), 0.1f, 1.0f);
+	float g = clamp(cnoise(sin(Position)), 0.1f, 1.0f);
+	float b = clamp(cnoise(cos(Position)), 0.1f, 1.0f);
+    color = vec4(r + b, g + b, b + g, 1.0);
 }
