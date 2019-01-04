@@ -8,10 +8,13 @@ out vec3 Position;
 out vec3 vPos;
 out vec3 Normal;
 out vec2 UV;
+out vec3 ShadowUV;
 out float Altitude;
 
 uniform mat4 MV;
 uniform mat4 P;
+uniform mat4 shadowmap_p;
+uniform mat4 shadowmap_v;
 
 //
 // Description : Array and textureless GLSL 2D/3D/4D simplex 
@@ -147,6 +150,10 @@ void main ()
     Normal = normalize(mat3(MV) * normal);
     UV = tex;
 
+    vec4 ShadowPos = shadowmap_v * MV * vec4(surfacePos, 1.0);
+    vec4 ShadowProjected = shadowmap_p * ShadowPos;
+    ShadowUV = vec3((ShadowPos.xy / 3.0) + 1.5, ShadowPos.z + 10000.0);
+
     //! Convert position to clip coordinates and pass along to fragment shader
-    gl_Position =  (P * MV) * vec4(surfacePos, 1.0);
+    gl_Position = (P * MV) * vec4(surfacePos, 1.0);
 }

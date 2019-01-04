@@ -1,4 +1,7 @@
-use cgmath::{perspective, vec3, Deg, Matrix4, Vector3, ortho, Point3, SquareMatrix, conv::{array4x4, array3}, InnerSpace};
+use cgmath::{
+    conv::{array3, array4x4},
+    ortho, perspective, vec3, Deg, InnerSpace, Matrix4, Point3, Vector3,
+};
 use glium::glutin::{dpi::LogicalPosition, Api, GlProfile, GlRequest};
 use glium::{
     backend::Facade,
@@ -7,7 +10,9 @@ use glium::{
     glutin, implement_vertex,
     index::PrimitiveType,
     texture::{texture2d::Texture2d, DepthFormat, MipmapsOption, UncompressedFloatFormat},
-    uniform, Depth, DepthTest, Display, DrawParameters, Program, Surface,
+    uniform,
+    uniforms::Sampler,
+    Depth, DepthTest, Display, DrawParameters, Program, Surface,
 };
 use imgui::{im_str, FrameSize, ImGui, ImGuiCond, ImGuiKey, Ui};
 use rand::distributions::{Distribution, UnitSphereSurface};
@@ -381,22 +386,22 @@ fn main() -> Result<(), Box<error::Error>> {
 
     let mut imgui_renderer = imgui_glium_renderer::Renderer::init(&mut imgui, &display).unwrap();
 
-    let lightmap_texture = {
+    let shadowmap_texture = {
         let (width, height) = display.get_framebuffer_dimensions();
         Texture2d::empty_with_format(
             &display,
             UncompressedFloatFormat::F32F32,
             MipmapsOption::NoMipmap,
-            width,
-            height,
+            4 * width,
+            4 * height,
         )?
     };
     let shadowmap_depthbuffer = {
         let (width, height) = display.get_framebuffer_dimensions();
-        DepthRenderBuffer::new(&display, DepthFormat::F32, width, height)?
+        DepthRenderBuffer::new(&display, DepthFormat::F32, 4 * width, 4 * height)?
     };
     let mut shadowmap_framebuffer =
-        SimpleFrameBuffer::with_depth_buffer(&display, &lightmap_texture, &shadowmap_depthbuffer)?;
+        SimpleFrameBuffer::with_depth_buffer(&display, &shadowmap_texture, &shadowmap_depthbuffer)?;
 
     let mut p = State::new(&display)?;
 
@@ -548,33 +553,47 @@ fn main() -> Result<(), Box<error::Error>> {
 
         let projection = perspective(Deg(90.0), width as f32 / height as f32, 0.01, 1000.0);
 
+        let shadowmap_v = Matrix4::look_at(
+            Point3 {
+                x: p.sun_pos.x,
+                y: p.sun_pos.y,
+                z: p.sun_pos.z,
+            },
+            Point3 {
+                x: planet_pos.x,
+                y: planet_pos.y,
+                z: planet_pos.z,
+            },
+            vec3(0.0, 1.0, 0.0),
+        );
+
+        let shadowmap_p = {
+            let dist = (planet_pos - p.sun_pos).magnitude();
+            ortho(-1.5, 1.5, -1.5, 1.5, dist - 1.5, dist + 1.5)
+        };
+
         let time = {
             let duration = Instant::now().duration_since(p.start_time);
             duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9
         };
 
         {
-            let dist = (planet_pos - p.sun_pos).magnitude();
+            let planet_uniforms = uniform! {
+                MV: array4x4(planet_matrix),
+                P: array4x4(shadowmap_p * shadowmap_v),
+                shadowmap_p: array4x4(shadowmap_p),
+                shadowmap_v: array4x4(shadowmap_v),
+                sunPos: array3(p.sun_pos),
+            };
 
-            let shadowmap_projection = ortho(-1.5, 1.5, -1.5, 1.5, dist - 1.5, dist + 1.5);
-            let sun_look_at_planet = Matrix4::look_at(
-                Point3 { x: p.sun_pos.x, y: p.sun_pos.y, z: p.sun_pos.z },
-                Point3 { x: planet_pos.x, y: planet_pos.y, z: planet_pos.z }, vec3(0.0, 1.0, 0.0));
-
-            let planet_uniforms =
-                uniform! {
-                    MV: array4x4(planet_matrix),
-                    P: array4x4(shadowmap_projection * sun_look_at_planet),
-                    sunPos: array3(p.sun_pos),
-                };
-
-            let cloud_uniforms = 
-                uniform! {
-                    MV: array4x4(cloud_matrix),
-                    P: array4x4(shadowmap_projection * sun_look_at_planet),
-                    time: time,
-                    sunPos: array3(p.sun_pos),
-                };
+            let cloud_uniforms = uniform! {
+                MV: array4x4(cloud_matrix),
+                P: array4x4(shadowmap_p * shadowmap_v),
+                shadowmap_p: array4x4(shadowmap_p),
+                shadowmap_v: array4x4(shadowmap_v),
+                time: time,
+                sunPos: array3(p.sun_pos),
+            };
 
             let clockwise_params = DrawParameters {
                 depth: Depth {
@@ -625,25 +644,25 @@ fn main() -> Result<(), Box<error::Error>> {
         }
 
         {
-            let planet_uniforms = 
-                uniform! {
-                    MV: array4x4(planet_matrix),
-                    P: array4x4(projection),
-                    sunPos: array3(p.sun_pos),
-                };
+            let planet_uniforms = uniform! {
+                MV: array4x4(planet_matrix),
+                P: array4x4(projection),
+                sunPos: array3(p.sun_pos),
+                shadowmap_p: array4x4(shadowmap_p),
+                shadowmap_v: array4x4(shadowmap_v),
+                tex: Sampler::new(&shadowmap_texture),
+            };
 
-            let cloud_uniforms = 
-                uniform! {
-                    MV: array4x4(cloud_matrix),
-                    P: array4x4(projection),
-                    time: time,
-                    sunPos: array3(p.sun_pos),
-                };
+            let cloud_uniforms = uniform! {
+                MV: array4x4(cloud_matrix),
+                P: array4x4(projection),
+                time: time,
+                sunPos: array3(p.sun_pos),
+            };
 
-            let star_uniforms = 
-                uniform! {
-                    mvp: array4x4(projection * planet_matrix),
-                };
+            let star_uniforms = uniform! {
+                mvp: array4x4(projection * planet_matrix),
+            };
 
             let planet_params = DrawParameters {
                 depth: Depth {

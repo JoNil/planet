@@ -5,6 +5,7 @@ in vec3 Position;
 in vec3 vPos;
 in vec3 Normal;
 in vec2 UV;
+in vec3 ShadowUV;
 in float Altitude;
 
 uniform vec3 sunPos;
@@ -284,8 +285,12 @@ void main () {
     vec3 lightDir = normalize(sunPos - Position);
     vec3 viewDir  = normalize(-Position);
 
+    // Shadow sample
+    vec2 shadowValue = texture(tex, vec2(1.0 - ShadowUV.x, 1.0 - ShadowUV.y)).xy;
+    float shadowAmt = (shadowValue.x > ShadowUV.z + 0.001) ? 1.0 : 0.0;
+
     // city lights
-    float cityLightNoise = clamp(dot(normal, -lightDir), 0.0f, 1.0f) * smoothstep(0.0, 0.2, snoise(vPos.xyz * 1)) * smoothstep(0.2, 0.4, snoise(vPos.xyz * 3)) * clamp(snoise(vPos.xyz * 15) + 0.2, 0.0, 1.0);
+    float cityLightNoise = max(clamp(dot(normal, -lightDir), 0.0f, 1.0f), 0.5*shadowAmt) * smoothstep(0.0, 0.2, snoise(vPos.xyz * 1)) * smoothstep(0.2, 0.4, snoise(vPos.xyz * 3)) * clamp(snoise(vPos.xyz * 15) + 0.2, 0.0, 1.0);
     vec3 lightPolutionColor = vec3(1.0f, 0.98f, 0.914f);
     vec3 lightPolutionColor2 = vec3(0.961f, 0.518f, 0.29f);
     vec3 emissive = mix(lightPolutionColor2, lightPolutionColor2, cityLightNoise) * step(sandHeight, Altitude) *  step(Altitude, snowHeight - 0.06) * cityLightNoise;
@@ -307,6 +312,7 @@ void main () {
     // Ambient-------------
     vec3 ambient = 0.08f * color;
 
-    vec3 resultLight = ambient + diffuse + specular * 0.8f + emissive;
+    vec3 resultLight = ambient + (1.0 - shadowAmt) * diffuse + specular * 0.8 + emissive;
+
     FragColor = vec4(pow(resultLight, vec3(2.2)), 1.0f);
 }
